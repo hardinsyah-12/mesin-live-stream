@@ -13,7 +13,7 @@ current_stream_process = None
 # =====================================================================
 # 🛠️ MASUKKAN TOKEN BOT TELEGRAM IBU DI SINI
 # =====================================================================
-TOKEN_BOT = "MASUKKAN_TOKEN_API_BOT_IBU_DI_SINI"
+TOKEN_BOT = "8874310524:AAFLCMqAGVyfeHaSRIfiCx5F89Jo9wQCxKw"
 # =====================================================================
 
 class StreamRequest(BaseModel):
