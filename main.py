@@ -15,26 +15,24 @@ class StreamRequest(BaseModel):
     stream_key: str
     duration_hours: float = 12.0
 
-# --- FUNGSI SAKTI: MENGUBAH LINK DRIVE MENJADI DIRECT LINK MP4 ---
+# --- PERBAIKAN FUNGSI: DIRECT LINK ANTI-BLOKIR GOOGLE DRIVE ---
 def get_direct_download_link(url: str) -> str:
-    # Jika bukan link google drive, kembalikan url asli
     if "drive.google.com" not in url:
         return url
     
-    # Mencari pola ID File Google Drive
+    # Ekstrak ID File dari link Google Drive Anda
     match = re.search(r'/d/([^/]+)', url) or re.search(r'id=([^&]+)', url)
     if match:
         file_id = match.group(1)
-        # Mengubahnya menjadi URL Direct Stream/Download khusus video mentah
-        return f"https://docs.google.com/uc?export=download&id={file_id}"
+        # Menggunakan format link API mentah Google Drive khusus untuk streaming pihak ketiga
+        return f"https://drive.google.com/uc?id={file_id}&export=download"
     return url
 
 def run_ffmpeg(video_url: str, stream_key: str, duration_hours: float):
     global current_stream_process
     
-    # Konversi URL ke tautan unduhan langsung agar FFmpeg bisa membaca videonya
     direct_video_url = get_direct_download_link(video_url)
-    print(f"Mengonversi Link. Hasil Direct Link: {direct_video_url}")
+    print(f"Mengonversi Tautan. Hasil Direct Link: {direct_video_url}")
     
     rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
     
@@ -42,7 +40,7 @@ def run_ffmpeg(video_url: str, stream_key: str, duration_hours: float):
         "ffmpeg",
         "-re",
         "-stream_loop", "-1",
-        "-i", direct_video_url,  # Menggunakan direct link yang sudah dikonversi
+        "-i", direct_video_url,
         "-c:v", "copy",
         "-c:a", "aac",
         "-f", "flv",
@@ -55,18 +53,17 @@ def run_ffmpeg(video_url: str, stream_key: str, duration_hours: float):
         waktu_mulai = time.time()
         batas_detik = float(duration_hours) * 3600
         
-        print(f"Streaming dimulai ke YouTube. Berhenti otomatis dalam {duration_hours} jam.")
+        print(f"Streaming didorong ke YouTube. Durasi otomatis terkunci: {duration_hours} jam.")
         
         while True:
             if current_stream_process.poll() is not None:
-                # Ambil pesan eror dari output FFmpeg jika ada
                 output, _ = current_stream_process.communicate()
-                print(f"FFmpeg berhenti. Log output: {output.decode('utf-8', errors='ignore')}")
+                print(f"⚠️ DETAIL ERROR FFmpeg: \n{output.decode('utf-8', errors='ignore')}")
                 break
             
             waktu_berjalan = time.time() - waktu_mulai
             if waktu_berjalan >= batas_detik:
-                print("Batas waktu terpenuhi! Mematikan live otomatis...")
+                print("Batas waktu jadwal habis! Mematikan live otomatis...")
                 current_stream_process.terminate()
                 current_stream_process.wait()
                 break
@@ -88,7 +85,7 @@ async def start_stream(request: StreamRequest, background_tasks: BackgroundTasks
     background_tasks.add_task(run_ffmpeg, request.video_url, request.stream_key, request.duration_hours)
     return {
         "status": "success", 
-        "message": f"Streaming dikirim ke Render dengan durasi {request.duration_hours} jam!"
+        "message": "Sinyal diterima server Render!"
     }
 
 @app.post("/stop")
@@ -107,5 +104,5 @@ async def stop_stream():
 async def get_status():
     global current_stream_process
     if current_stream_process and current_stream_process.poll() is None:
-        return {"status": "streaming", "message": "Server sedang melakukan live streaming."}
-    return {"status": "idle", "message": "Server sedang istirahat."}
+        return {"status": "streaming", "message": "Server sedang aktif."}
+    return {"status": "idle", "message": "Server istirahat."}
