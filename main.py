@@ -15,7 +15,7 @@ class StreamRequest(BaseModel):
     stream_key: str
     duration_hours: float = 12.0
 
-# --- FUNGSI BYPASS LINK GOOGLE DRIVE LEWAT JALUR API MENTAH ---
+# --- FUNGSI BYPASS LINK GOOGLE DRIVE UNTUK VIDEO UKURAN BESAR ---
 def get_direct_download_link(url: str) -> str:
     if "drive.google.com" not in url:
         return url
@@ -23,8 +23,8 @@ def get_direct_download_link(url: str) -> str:
     match = re.search(r'/d/([^/]+)', url) or re.search(r'id=([^&]+)', url)
     if match:
         file_id = match.group(1)
-        # Jalur API webstream ini langsung menyajikan file mentah video tanpa interupsi scan virus HTML
-        return f"https://drive.google.com/uc?id={file_id}&export=download&confirm=t"
+        # Menggunakan jalur API internal webdrive google untuk memaksa streaming video langsung tanpa bypass virus scan halaman HTML
+        return f"https://drive.google.com/uc?export=download&id={file_id}&confirm=t"
     return url
 
 def run_ffmpeg(video_url: str, stream_key: str, duration_hours: float):
@@ -35,8 +35,10 @@ def run_ffmpeg(video_url: str, stream_key: str, duration_hours: float):
     
     rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
     
+    # KUNCI PERBAIKAN: Menambahkan opsi -headers pada FFmpeg agar dikenali sebagai web browser resmi oleh Google Drive
     command = [
         "ffmpeg",
+        "-headers", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n",
         "-re",
         "-stream_loop", "-1",
         "-i", direct_video_url,
