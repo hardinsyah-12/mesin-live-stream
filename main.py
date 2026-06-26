@@ -1,8 +1,8 @@
 import subprocess
 import os
-import signal
 import time
 import re
+import requests
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
@@ -15,30 +15,52 @@ class StreamRequest(BaseModel):
     stream_key: str
     duration_hours: float = 12.0
 
-# --- FUNGSI BYPASS LINK GOOGLE DRIVE UNTUK VIDEO UKURAN BESAR ---
-def get_direct_download_link(url: str) -> str:
+# --- FUNGSI BYPASS OTOMATIS TOKEN VIRUS GOOGLE DRIVE (KHUSUS SERVER REE) ---
+def get_google_drive_direct_link(url: str) -> str:
     if "drive.google.com" not in url:
         return url
     
     match = re.search(r'/d/([^/]+)', url) or re.search(r'id=([^&]+)', url)
-    if match:
-        file_id = match.group(1)
-        # Menggunakan jalur API internal webdrive google untuk memaksa streaming video langsung tanpa bypass virus scan halaman HTML
-        return f"https://drive.google.com/uc?export=download&id={file_id}&confirm=t"
-    return url
+    if not match:
+        return url
+        
+    file_id = match.group(1)
+    download_url = f"https://docs.google.com/uc?export=download&id={file_id}"
+    
+    # Gunakan session untuk menangkap cookie konfirmasi dari Google
+    session = requests.Session()
+    session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+    
+    try:
+        response = session.get(download_url, allow_redirects=False)
+        # Jika Google memberikan halaman konfirmasi virus, cari token konfirmasinya
+        for key, value in response.cookies.items():
+            if key.startswith('download_warning'):
+                return f"https://docs.google.com/uc?export=download&id={file_id}&confirm={value}"
+                
+        # Trik kedua: Cek dari teks HTML jika cookie tidak langsung terbaca
+        if response.status_code == 200 and "confirm=" in response.text:
+            confirm_match = re.search(r'confirm=([A-Za-z0-9_]+)', response.text)
+            if confirm_match:
+                return f"https://docs.google.com/uc?export=download&id={file_id}&confirm={confirm_match.group(1)}"
+    except Exception as e:
+        print(f"Gagal mendapatkan token bypass: {str(e)}")
+        
+    # Jalur alternatif standar dengan pemaksaan konfirmasi parameter t
+    return f"https://docs.google.com/uc?export=download&id={file_id}&confirm=t"
 
 def run_ffmpeg(video_url: str, stream_key: str, duration_hours: float):
     global current_stream_process
     
-    direct_video_url = get_direct_download_link(video_url)
+    # Mendapatkan link yang sudah lolos sensor virus Google Drive
+    direct_video_url = get_google_drive_direct_link(video_url)
     print(f"Mengonversi Tautan. Hasil Direct Link: {direct_video_url}")
     
     rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
     
-    # KUNCI PERBAIKAN: Menambahkan opsi -headers pada FFmpeg agar dikenali sebagai web browser resmi oleh Google Drive
+    # FFmpeg akan langsung membaca aliran data dari internet tanpa memakan memori disk Render!
     command = [
         "ffmpeg",
-        "-headers", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n",
         "-re",
         "-stream_loop", "-1",
         "-i", direct_video_url,
@@ -79,31 +101,25 @@ def run_ffmpeg(video_url: str, stream_key: str, duration_hours: float):
 @app.post("/start")
 async def start_stream(request: StreamRequest, background_tasks: BackgroundTasks):
     global current_stream_process
-    
     if current_stream_process and current_stream_process.poll() is None:
         raise HTTPException(status_code=400, detail="Streaming sedang berjalan. Hentikan dulu!")
     
     background_tasks.add_task(run_ffmpeg, request.video_url, request.stream_key, request.duration_hours)
-    return {
-        "status": "success", 
-        "message": "Sinyal diterima server Render!"
-    }
+    return {"status": "success", "message": "Sinyal diterima server Render gratisan!"}
 
 @app.post("/stop")
 async def stop_stream():
     global current_stream_process
-    
     if current_stream_process and current_stream_process.poll() is None:
         current_stream_process.terminate()
         current_stream_process.wait()
         current_stream_process = None
         return {"status": "success", "message": "Streaming dihentikan manual!"}
-    
-    return {"status": "error", "message": "Tidak ada streaming yang sedang berjalan."}
+    return {"status": "error", "message": "Tidak ada streaming yang berjalan."}
 
 @app.get("/status")
 async def get_status():
     global current_stream_process
     if current_stream_process and current_stream_process.poll() is None:
-        return {"status": "streaming", "message": "Server sedang aktif."}
-    return {"status": "idle", "message": "Server istirahat."}
+        return {"status": "streaming"}
+    return {"status": "idle"}
