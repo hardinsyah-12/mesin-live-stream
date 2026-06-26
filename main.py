@@ -25,10 +25,18 @@ class StreamRequest(BaseModel):
 def run_ffmpeg(video_url: str, stream_key: str, duration_hours: float):
     global current_stream_process
     
-    print(f"Mengonversi Tautan Video: {video_url}")
+    # PELACAKAN 2: Memastikan fungsi pembacaan dimulai
+    print("=== [PROSES FFmpeg DIMULAI] ===")
+    print(f"-> Menerima URL Video: '{video_url}'")
+    print(f"-> Menerima Stream Key: '{stream_key[:5]}...' (Disamarkan)")
+    print(f"-> Durasi Terkunci: {duration_hours} Jam")
+    
+    if not video_url or not stream_key:
+        print("❌ EROR KRUSIAL: Data Link Video atau Stream Key Kosong / Tidak Terbaca!")
+        return
+
     rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
     
-    # Ditambahkan header penyamaran browser agar bot stream Telegram tidak diblokir saat diputar
     command = [
         "ffmpeg",
         "-headers", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n",
@@ -46,48 +54,57 @@ def run_ffmpeg(video_url: str, stream_key: str, duration_hours: float):
         waktu_mulai = time.time()
         batas_detik = float(duration_hours) * 3600
         
-        print(f"Streaming didorong ke YouTube selama {duration_hours} jam.")
+        print("🚀 FFmpeg Berhasil Dipicu! Mengalirkan data ke YouTube...")
         
         while True:
             if current_stream_process.poll() is not None:
                 output, _ = current_stream_process.communicate()
-                print(f"⚠️ LOG FFmpeg: \n{output.decode('utf-8', errors='ignore')}")
+                print(f"⚠️ LOG FFmpeg MOGOK: \n{output.decode('utf-8', errors='ignore')}")
                 break
             
             waktu_berjalan = time.time() - waktu_mulai
             if waktu_berjalan >= batas_detik:
-                print("Waktu habis, menghentikan live...")
+                print("Waktu jadwal habis, menghentikan live otomatis...")
                 current_stream_process.terminate()
                 current_stream_process.wait()
                 break
-            time.sleep(10)
+            time.sleep(5)
             
     except Exception as e:
-        print(f"Error streaming: {str(e)}")
+        print(f"❌ Gangguan Sistem FFmpeg: {str(e)}")
     finally:
         current_stream_process = None
+        print("=== [PROSES FFmpeg BERAKHIR/DIHENTIKAN] ===")
 
 
 @app.post("/start")
 async def start_stream(request: StreamRequest, background_tasks: BackgroundTasks):
     global current_stream_process
+    
+    # PELACAKAN 1: Mencetak payload mentah yang masuk dari Google Sheets
+    print("=== [SINYAL START MASUK] ===")
+    print(f"Payload Mentah: video_url={request.video_url}, duration={request.duration_hours}")
+    
     if current_stream_process and current_stream_process.poll() is None:
+        print("⚠️ Peringatan: Ada streaming yang masih aktif di memori.")
         raise HTTPException(status_code=400, detail="Streaming sedang berjalan.")
+        
     background_tasks.add_task(run_ffmpeg, request.video_url, request.stream_key, request.duration_hours)
-    return {"status": "success", "message": "Siaran dimulai!"}
+    return {"status": "success", "message": "Perintah Start Diterima Python!"}
 
 
 @app.post("/stop")
 async def stop_stream():
     global current_stream_process
+    print("=== [SINYAL STOP MASUK] ===")
     if current_stream_process and current_stream_process.poll() is None:
         current_stream_process.terminate()
         current_stream_process.wait()
         current_stream_process = None
+        print("✅ Berhasil mematikan paksa FFmpeg.")
     return {"status": "success", "message": "Siaran dihentikan!"}
 
 
-# --- JALUR BYPASS FILE TELEGRAM BERUKURAN BESAR (200MB - 900MB) ---
 @app.post(f"/bot/{TOKEN_BOT}")
 async def terima_pesan_telegram(update: dict):
     if "message" in update:
@@ -96,26 +113,15 @@ async def terima_pesan_telegram(update: dict):
         
         if "video" in pesan:
             file_id = pesan["video"]["file_id"]
-            
-            # Trik Bypass: Membuat link stream download bypass menggunakan ID File langsung
-            # Melalui gateway proxy bot resmi Telegram web client
             direct_link_bypass = f"https://api.telegram.org/file/bot{TOKEN_BOT}/videos/{file_id}.mp4"
             
             teks_balasan = (
                 "🎉 **BOT BERHASIL MEMBYPASS PROTEKSI FILE BESAR!** 🎉\n\n"
-                "Silakan salin tautan privat di bawah ini dan tempelkan ke **Kolom B Google Sheets** Anda:\n\n"
-                f"`https://api.telegram.org/file/bot{TOKEN_BOT}/getFile?file_id={file_id}`\n\n"
-                "⚠️ *Catatan: Jika link di atas masih memicu limit, gunakan jalur bypass CDN Telegram ini:*\n"
+                "Silakan gunakan jalur alternatif langsung ini untuk dimasukkan ke **Kolom B Google Sheets** Anda:\n\n"
                 f"`{direct_link_bypass}`"
             )
-                
             url_kirim = f"https://api.telegram.org/bot{TOKEN_BOT}/sendMessage"
             requests.post(url_kirim, json={"chat_id": chat_id, "text": teks_balasan, "parse_mode": "Markdown"})
-            
-        elif "text" in pesan:
-            url_kirim = f"https://api.telegram.org/bot{TOKEN_BOT}/sendMessage"
-            requests.post(url_kirim, json={"chat_id": chat_id, "text": "👋 Halo bro! Silakan kirim file video besar (.mp4) ke sini. Sistem bypass file besar sudah diaktifkan!"})
-            
     return {"status": "ok"}
 
 
