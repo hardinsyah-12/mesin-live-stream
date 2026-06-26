@@ -15,17 +15,16 @@ class StreamRequest(BaseModel):
     stream_key: str
     duration_hours: float = 12.0
 
-# --- PERBAIKAN FUNGSI: DIRECT LINK ANTI-BLOKIR GOOGLE DRIVE ---
+# --- FUNGSI BYPASS LINK GOOGLE DRIVE LEWAT JALUR API MENTAH ---
 def get_direct_download_link(url: str) -> str:
     if "drive.google.com" not in url:
         return url
     
-    # Ekstrak ID File dari link Google Drive Anda
     match = re.search(r'/d/([^/]+)', url) or re.search(r'id=([^&]+)', url)
     if match:
         file_id = match.group(1)
-        # Menggunakan format link API mentah Google Drive khusus untuk streaming pihak ketiga
-        return f"https://drive.google.com/uc?id={file_id}&export=download"
+        # Jalur API webstream ini langsung menyajikan file mentah video tanpa interupsi scan virus HTML
+        return f"https://drive.google.com/uc?id={file_id}&export=download&confirm=t"
     return url
 
 def run_ffmpeg(video_url: str, stream_key: str, duration_hours: float):
